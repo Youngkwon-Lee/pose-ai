@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import Link from "next/link";
 import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
+import Pose3DViewer from '@/components/pose/Pose3DViewer';
+import HMRPoseEstimator from '@/components/pose/HMRPoseEstimator';
 
 // Component for the analysis
 const PoseAnalysisComponent = () => {
@@ -20,6 +22,8 @@ const PoseAnalysisComponent = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showKeypoints, setShowKeypoints] = useState(false);
   const [keypointImage, setKeypointImage] = useState<string | null>(null);
+  const [width, setWidth] = useState(300);
+  const [height, setHeight] = useState(300);
 
   // Initialize TensorFlow and pose detector
   useEffect(() => {
@@ -119,6 +123,21 @@ const PoseAnalysisComponent = () => {
     }
 
     return measurements > 0 ? Math.round(totalScore / measurements) : 0;
+  };
+
+  const calculateAngle = (point1: any, point2: any, point3: any) => {
+    if (!point1 || !point2 || !point3) return null;
+    
+    const radians = Math.atan2(point3.y - point2.y, point3.x - point2.x) - 
+                   Math.atan2(point1.y - point2.y, point1.x - point2.x);
+    let degrees = Math.abs(radians * 180.0 / Math.PI);
+    
+    // 각도를 0-90도 범위로 정규화
+    if (degrees > 90) {
+      degrees = 180 - degrees;
+    }
+    
+    return Math.round(degrees);
   };
 
   const drawKeypoints = (keypoints: any[], canvas: HTMLCanvasElement) => {
@@ -268,6 +287,35 @@ const PoseAnalysisComponent = () => {
     }
   };
 
+  const validateKeypoints = (keypoints: any[]) => {
+    // 필수 키포인트 목록
+    const requiredKeypoints = [
+      'nose',
+      'left_shoulder',
+      'right_shoulder',
+      'left_hip',
+      'right_hip',
+      'left_knee',
+      'right_knee',
+      'left_ankle',
+      'right_ankle'
+    ];
+
+    // 필수 키포인트가 모두 있는지 확인
+    const missingKeypoints = requiredKeypoints.filter(keypoint => 
+      !keypoints.find(kp => kp.name === keypoint && kp.score > 0.3)
+    );
+
+    if (missingKeypoints.length > 0) {
+      return {
+        isValid: false,
+        message: `다음 부위가 보이지 않습니다: ${missingKeypoints.join(', ')}. 다시 찍어주세요.`
+      };
+    }
+
+    return { isValid: true };
+  };
+
   const analyzePose = async () => {
     if (!selectedFile || !detector || !canvasRef.current) return;
 
@@ -292,12 +340,19 @@ const PoseAnalysisComponent = () => {
       const poses = await detector.estimatePoses(img);
       
       if (poses.length === 0) {
-        toast.error('No pose detected in the image');
+        toast.error('이미지에서 자세를 감지할 수 없습니다');
         return;
       }
 
       const pose = poses[0];
       const keypoints = pose.keypoints;
+
+      // 키포인트 검증
+      const validation = validateKeypoints(keypoints);
+      if (!validation.isValid) {
+        toast.error(validation.message);
+        return;
+      }
       
       // 키포인트 시각화
       drawKeypoints(keypoints, canvas);
@@ -317,7 +372,13 @@ const PoseAnalysisComponent = () => {
             title: string;
             description: string;
             exercises: string[];
-          }>
+          }>,
+          angles: {
+            shoulders: 0,
+            hips: 0,
+            neck: 0,
+            back: 0
+          }
         },
         alignment: {
           score: alignmentScore,
@@ -327,45 +388,112 @@ const PoseAnalysisComponent = () => {
         keypoints: keypoints
       };
 
-      // 자세 문제점 분석
-      if (alignmentScore < 90) {
-        results.posture.issues.push("자세가 불균형합니다");
-        results.posture.improvements.push("균형 잡힌 자세를 유지하세요");
-        results.posture.solutions.push({
-          title: "자세 균형 교정",
-          description: "어깨와 골반의 높이를 맞추고, 목을 곧게 유지하세요.",
-          exercises: ["어깨 정렬 운동", "골반 정렬 운동"]
-        });
+      // 어깨 각도 계산
+      const leftShoulder = keypoints.find(kp => kp.name === 'left_shoulder');
+      const rightShoulder = keypoints.find(kp => kp.name === 'right_shoulder');
+      const leftHip = keypoints.find(kp => kp.name === 'left_hip');
+      const rightHip = keypoints.find(kp => kp.name === 'right_hip');
+      const nose = keypoints.find(kp => kp.name === 'nose');
+      const leftEar = keypoints.find(kp => kp.name === 'left_ear');
+      const rightEar = keypoints.find(kp => kp.name === 'right_ear');
+      const leftKnee = keypoints.find(kp => kp.name === 'left_knee');
+      const rightKnee = keypoints.find(kp => kp.name === 'right_knee');
+
+      // 어깨 기울기 계산
+      if (leftShoulder && rightShoulder) {
+        const shoulderDiff = Math.abs(leftShoulder.y - rightShoulder.y);
+        const shoulderAngle = Math.round(Math.atan2(shoulderDiff, rightShoulder.x - leftShoulder.x) * 180 / Math.PI);
+        const normalizedShoulderAngle = shoulderAngle > 90 ? 180 - shoulderAngle : shoulderAngle;
+        results.posture.angles.shoulders = normalizedShoulderAngle;
+        
+        if (shoulderDiff > 0.1) {
+          results.posture.issues.push(`어깨가 ${normalizedShoulderAngle}도 기울어져 있습니다`);
+          results.posture.improvements.push(`어깨 높이를 ${normalizedShoulderAngle}도 만큼 맞추세요`);
+          results.posture.solutions.push({
+            title: "어깨 정렬 교정",
+            description: `어깨를 ${normalizedShoulderAngle}도 만큼 수평으로 맞추세요`,
+            exercises: ["어깨 정렬 운동", "스트레칭"]
+          });
+        }
       }
 
-      if (alignmentScore < 80) {
-        results.posture.issues.push("심각한 자세 불균형이 있습니다");
-        results.posture.improvements.push("전문가와 상담하시는 것을 추천드립니다");
-        results.posture.solutions.push({
-          title: "전문가 상담",
-          description: "물리치료사나 자세 교정 전문가와 상담하세요.",
-          exercises: ["전문가 상담", "맞춤형 운동 프로그램"]
-        });
+      // 골반 기울기 계산
+      if (leftHip && rightHip) {
+        const hipDiff = Math.abs(leftHip.y - rightHip.y);
+        const hipAngle = Math.round(Math.atan2(hipDiff, rightHip.x - leftHip.x) * 180 / Math.PI);
+        const normalizedHipAngle = hipAngle > 90 ? 180 - hipAngle : hipAngle;
+        results.posture.angles.hips = normalizedHipAngle;
+        
+        if (hipDiff > 0.1) {
+          results.posture.issues.push(`골반이 ${normalizedHipAngle}도 기울어져 있습니다`);
+          results.posture.improvements.push(`골반 높이를 ${normalizedHipAngle}도 만큼 맞추세요`);
+          results.posture.solutions.push({
+            title: "골반 정렬 교정",
+            description: `골반을 ${normalizedHipAngle}도 만큼 수평으로 맞추세요`,
+            exercises: ["골반 정렬 운동", "코어 운동"]
+          });
+        }
+      }
+
+      // 목 기울기 계산
+      if (nose && leftEar && rightEar) {
+        const earDiff = Math.abs(leftEar.y - rightEar.y);
+        const neckAngle = Math.round(Math.atan2(earDiff, rightEar.x - leftEar.x) * 180 / Math.PI);
+        const normalizedNeckAngle = neckAngle > 90 ? 180 - neckAngle : neckAngle;
+        results.posture.angles.neck = normalizedNeckAngle;
+        
+        if (earDiff > 0.1) {
+          results.posture.issues.push(`목이 ${normalizedNeckAngle}도 기울어져 있습니다`);
+          results.posture.improvements.push(`목을 ${normalizedNeckAngle}도 만큼 수평으로 맞추세요`);
+          results.posture.solutions.push({
+            title: "목 자세 교정",
+            description: `목을 ${normalizedNeckAngle}도 만큼 수평으로 맞추세요`,
+            exercises: ["목 스트레칭", "자세 교정 운동"]
+          });
+        }
+      }
+
+      // 등 기울기 계산
+      if (leftShoulder && rightShoulder && leftHip && rightHip) {
+        const backAngle = calculateAngle(leftShoulder, leftHip, rightHip);
+        if (backAngle !== null) {
+          results.posture.angles.back = backAngle;
+          if (backAngle > 5) {
+            results.posture.issues.push(`등이 ${backAngle}도 기울어져 있습니다`);
+            results.posture.improvements.push(`등을 ${backAngle}도 만큼 수직으로 맞추세요`);
+            results.posture.solutions.push({
+              title: "등 자세 교정",
+              description: `등을 ${backAngle}도 만큼 수직으로 맞추세요`,
+              exercises: ["등 스트레칭", "코어 운동"]
+            });
+          }
+        }
       }
 
       // 정렬 상세 정보
-      results.alignment.details = alignmentScore >= 90 
-        ? "전반적으로 좋은 자세를 유지하고 있습니다"
-        : alignmentScore >= 80
-        ? "약간의 자세 교정이 필요합니다"
-        : "자세 교정이 필요합니다";
-
-      // 자세 교정 팁
-      results.alignment.tips = [
-        "어깨를 뒤로 당기고 아래로 내리세요",
-        "골반을 중립 위치로 유지하세요",
-        "목을 곧게 유지하세요"
-      ];
+      if (alignmentScore >= 90) {
+        results.alignment.details = "전반적으로 좋은 자세를 유지하고 있습니다";
+        results.alignment.tips = ["현재 자세를 유지하세요"];
+      } else if (alignmentScore >= 80) {
+        results.alignment.details = "약간의 자세 교정이 필요합니다";
+        results.alignment.tips = [
+          "어깨를 뒤로 당기고 아래로 내리세요",
+          "골반을 중립 위치로 유지하세요",
+          "목을 곧게 유지하세요"
+        ];
+      } else {
+        results.alignment.details = "자세 교정이 필요합니다";
+        results.alignment.tips = [
+          "전문가와 상담하세요",
+          "정기적인 자세 교정 운동을 하세요",
+          "일상생활에서 자세를 의식하세요"
+        ];
+      }
 
       setAnalysisResults(results);
     } catch (error) {
-      console.error('Error analyzing pose:', error);
-      toast.error('Failed to analyze pose');
+      console.error('자세 분석 중 오류 발생:', error);
+      toast.error('자세 분석에 실패했습니다');
     } finally {
       setIsLoading(false);
       setIsAnalyzing(false);
@@ -593,6 +721,36 @@ const PoseAnalysisComponent = () => {
               </div>
 
               <div>
+                <h3 className="font-medium text-gray-dark mb-2">자세 각도 분석</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-lime-pale p-4 rounded-md">
+                    <h4 className="font-medium text-gray-dark mb-2">어깨</h4>
+                    <p className="text-sm text-gray-medium">
+                      {analysisResults.posture.angles.shoulders}도 기울어짐
+                    </p>
+                  </div>
+                  <div className="bg-lime-pale p-4 rounded-md">
+                    <h4 className="font-medium text-gray-dark mb-2">골반</h4>
+                    <p className="text-sm text-gray-medium">
+                      {analysisResults.posture.angles.hips}도 기울어짐
+                    </p>
+                  </div>
+                  <div className="bg-lime-pale p-4 rounded-md">
+                    <h4 className="font-medium text-gray-dark mb-2">목</h4>
+                    <p className="text-sm text-gray-medium">
+                      {analysisResults.posture.angles.neck}도 기울어짐
+                    </p>
+                  </div>
+                  <div className="bg-lime-pale p-4 rounded-md">
+                    <h4 className="font-medium text-gray-dark mb-2">등</h4>
+                    <p className="text-sm text-gray-medium">
+                      {analysisResults.posture.angles.back}도 기울어짐
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
                 <h3 className="font-medium text-gray-dark mb-2">Alignment</h3>
                 <div className="bg-gray-50 p-4 rounded-md">
                   <p className="text-sm text-gray-medium mb-3">
@@ -605,6 +763,20 @@ const PoseAnalysisComponent = () => {
                         <li key={i}>{tip}</li>
                       ))}
                     </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-medium text-gray-dark mb-2">3D 자세 분석</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-medium mb-2">기본 3D 시각화</h4>
+                    <Pose3DViewer keypoints={analysisResults.keypoints} width={width} height={height} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-medium mb-2">HMR 3D 메시 분석</h4>
+                    <HMRPoseEstimator imageUrl={previewUrl || undefined} width={width} height={height} />
                   </div>
                 </div>
               </div>
