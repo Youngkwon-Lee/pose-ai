@@ -8,6 +8,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import Pose3DViewer from '@/components/pose/Pose3DViewer';
 import HMRPoseEstimator from '@/components/pose/HMRPoseEstimator';
+import Webcam from "react-webcam";
 
 // Component for the analysis
 const PoseAnalysisComponent = () => {
@@ -17,6 +18,7 @@ const PoseAnalysisComponent = () => {
   const [analysisResults, setAnalysisResults] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showExpertModal, setShowExpertModal] = useState(false);
   const [detector, setDetector] = useState<poseDetection.PoseDetector | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,12 +26,19 @@ const PoseAnalysisComponent = () => {
   const [keypointImage, setKeypointImage] = useState<string | null>(null);
   const [width, setWidth] = useState(300);
   const [height, setHeight] = useState(300);
+  const [showCamera, setShowCamera] = useState(false);
+  const webcamRef = useRef<any>(null);
+  const [analysisMode, setAnalysisMode] = useState<'upper' | 'full'>('full');
 
   // Initialize TensorFlow and pose detector
   useEffect(() => {
     const initPoseDetector = async () => {
       try {
+        console.log('TensorFlow 초기화 시작');
         await tf.ready();
+        console.log('TensorFlow 초기화 완료');
+
+        console.log('포즈 감지 모델 로딩 시작');
         const detectorConfig = {
           modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
         };
@@ -37,10 +46,12 @@ const PoseAnalysisComponent = () => {
           poseDetection.SupportedModels.MoveNet,
           detectorConfig
         );
+        console.log('포즈 감지 모델 로딩 완료');
         setDetector(detector);
+        toast.success('AI 모델이 성공적으로 로드되었습니다!');
       } catch (error) {
-        console.error('Error initializing pose detector:', error);
-        toast.error('Failed to initialize pose detection');
+        console.error('포즈 감지 모델 초기화 오류:', error);
+        toast.error('AI 모델 로드에 실패했습니다. 페이지를 새로고침해주세요.');
       }
     };
 
@@ -288,8 +299,18 @@ const PoseAnalysisComponent = () => {
   };
 
   const validateKeypoints = (keypoints: any[]) => {
-    // 필수 키포인트 목록
-    const requiredKeypoints = [
+    // 분석 모드에 따른 필수 키포인트 목록
+    const upperBodyKeypoints = [
+      'nose',
+      'left_shoulder',
+      'right_shoulder',
+      'left_elbow',
+      'right_elbow',
+      'left_wrist',
+      'right_wrist'
+    ];
+
+    const fullBodyKeypoints = [
       'nose',
       'left_shoulder',
       'right_shoulder',
@@ -300,6 +321,9 @@ const PoseAnalysisComponent = () => {
       'left_ankle',
       'right_ankle'
     ];
+
+    // 분석 모드에 따라 검증할 키포인트 선택
+    const requiredKeypoints = analysisMode === 'upper' ? upperBodyKeypoints : fullBodyKeypoints;
 
     // 필수 키포인트가 모두 있는지 확인
     const missingKeypoints = requiredKeypoints.filter(keypoint => 
@@ -317,30 +341,53 @@ const PoseAnalysisComponent = () => {
   };
 
   const analyzePose = async () => {
-    if (!selectedFile || !detector || !canvasRef.current) return;
+    if (!selectedFile || !detector || !canvasRef.current) {
+      console.log('초기 조건 체크 실패:', { 
+        hasFile: !!selectedFile, 
+        hasDetector: !!detector, 
+        hasCanvas: !!canvasRef.current 
+      });
+      if (!detector) {
+        toast.error('AI 모델이 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+      }
+      return;
+    }
 
     setIsAnalyzing(true);
     setIsLoading(true);
 
     try {
-      // 이미지를 캔버스에 그리기
+      console.log('이미지 로딩 시작');
       const img = new Image();
       img.src = previewUrl!;
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
         img.onload = resolve;
+        img.onerror = (e) => {
+          console.error('이미지 로딩 실패:', e);
+          reject(new Error('이미지를 로드할 수 없습니다.'));
+        };
       });
+      console.log('이미지 로딩 완료');
 
       const canvas = canvasRef.current;
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0);
+      if (!ctx) {
+        throw new Error('캔버스 컨텍스트를 가져올 수 없습니다');
+      }
+      ctx.drawImage(img, 0, 0);
+      console.log('이미지를 캔버스에 그리기 완료');
 
-      // 포즈 감지
+      console.log('포즈 감지 시작');
       const poses = await detector.estimatePoses(img);
+      console.log('포즈 감지 완료:', poses);
       
       if (poses.length === 0) {
+        console.log('포즈가 감지되지 않음');
         toast.error('이미지에서 자세를 감지할 수 없습니다');
+        setIsLoading(false);
+        setIsAnalyzing(false);
         return;
       }
 
@@ -376,8 +423,7 @@ const PoseAnalysisComponent = () => {
           angles: {
             shoulders: 0,
             hips: 0,
-            neck: 0,
-            back: 0
+            neck: 0
           }
         },
         alignment: {
@@ -407,11 +453,12 @@ const PoseAnalysisComponent = () => {
         results.posture.angles.shoulders = normalizedShoulderAngle;
         
         if (shoulderDiff > 0.1) {
-          results.posture.issues.push(`어깨가 ${normalizedShoulderAngle}도 기울어져 있습니다`);
-          results.posture.improvements.push(`어깨 높이를 ${normalizedShoulderAngle}도 만큼 맞추세요`);
+          const higherSide = leftShoulder.y < rightShoulder.y ? '왼쪽' : '오른쪽';
+          results.posture.issues.push(`${higherSide} 어깨가 ${normalizedShoulderAngle}도 높습니다`);
+          results.posture.improvements.push(`${higherSide} 어깨를 ${normalizedShoulderAngle}도 낮추세요`);
           results.posture.solutions.push({
             title: "어깨 정렬 교정",
-            description: `어깨를 ${normalizedShoulderAngle}도 만큼 수평으로 맞추세요`,
+            description: `${higherSide} 어깨를 ${normalizedShoulderAngle}도 낮추어 수평을 맞추세요`,
             exercises: ["어깨 정렬 운동", "스트레칭"]
           });
         }
@@ -425,11 +472,12 @@ const PoseAnalysisComponent = () => {
         results.posture.angles.hips = normalizedHipAngle;
         
         if (hipDiff > 0.1) {
-          results.posture.issues.push(`골반이 ${normalizedHipAngle}도 기울어져 있습니다`);
-          results.posture.improvements.push(`골반 높이를 ${normalizedHipAngle}도 만큼 맞추세요`);
+          const higherSide = leftHip.y < rightHip.y ? '왼쪽' : '오른쪽';
+          results.posture.issues.push(`${higherSide} 골반이 ${normalizedHipAngle}도 높습니다`);
+          results.posture.improvements.push(`${higherSide} 골반을 ${normalizedHipAngle}도 낮추세요`);
           results.posture.solutions.push({
             title: "골반 정렬 교정",
-            description: `골반을 ${normalizedHipAngle}도 만큼 수평으로 맞추세요`,
+            description: `${higherSide} 골반을 ${normalizedHipAngle}도 낮추어 수평을 맞추세요`,
             exercises: ["골반 정렬 운동", "코어 운동"]
           });
         }
@@ -443,30 +491,46 @@ const PoseAnalysisComponent = () => {
         results.posture.angles.neck = normalizedNeckAngle;
         
         if (earDiff > 0.1) {
-          results.posture.issues.push(`목이 ${normalizedNeckAngle}도 기울어져 있습니다`);
-          results.posture.improvements.push(`목을 ${normalizedNeckAngle}도 만큼 수평으로 맞추세요`);
+          const higherSide = leftEar.y < rightEar.y ? '왼쪽' : '오른쪽';
+          results.posture.issues.push(`${higherSide}으로 ${normalizedNeckAngle}도 목이 기울어져 있습니다`);
+          results.posture.improvements.push(`목을 ${normalizedNeckAngle}도 바로 하세요`);
           results.posture.solutions.push({
             title: "목 자세 교정",
-            description: `목을 ${normalizedNeckAngle}도 만큼 수평으로 맞추세요`,
+            description: `${higherSide}으로 기울어진 목을 ${normalizedNeckAngle}도 바로 하세요`,
             exercises: ["목 스트레칭", "자세 교정 운동"]
           });
         }
       }
 
-      // 등 기울기 계산
-      if (leftShoulder && rightShoulder && leftHip && rightHip) {
-        const backAngle = calculateAngle(leftShoulder, leftHip, rightHip);
-        if (backAngle !== null) {
-          results.posture.angles.back = backAngle;
-          if (backAngle > 5) {
-            results.posture.issues.push(`등이 ${backAngle}도 기울어져 있습니다`);
-            results.posture.improvements.push(`등을 ${backAngle}도 만큼 수직으로 맞추세요`);
-            results.posture.solutions.push({
-              title: "등 자세 교정",
-              description: `등을 ${backAngle}도 만큼 수직으로 맞추세요`,
-              exercises: ["등 스트레칭", "코어 운동"]
-            });
-          }
+      // 손목 길이 차이 계산
+      const leftWrist = keypoints.find(kp => kp.name === 'left_wrist');
+      const rightWrist = keypoints.find(kp => kp.name === 'right_wrist');
+
+      if (leftWrist && rightWrist && leftShoulder && rightShoulder) {
+        // 각 손목에서 어깨까지의 거리 계산
+        const leftArmLength = Math.sqrt(
+          Math.pow(leftWrist.x - leftShoulder.x, 2) + 
+          Math.pow(leftWrist.y - leftShoulder.y, 2)
+        );
+        const rightArmLength = Math.sqrt(
+          Math.pow(rightWrist.x - rightShoulder.x, 2) + 
+          Math.pow(rightWrist.y - rightShoulder.y, 2)
+        );
+
+        // 길이 차이 계산 (픽셀 단위를 상대적 비율로 변환)
+        const lengthDiff = Math.abs(leftArmLength - rightArmLength);
+        const avgLength = (leftArmLength + rightArmLength) / 2;
+        const diffPercentage = Math.round((lengthDiff / avgLength) * 100);
+
+        if (diffPercentage > 5) {  // 5% 이상 차이나는 경우
+          const longerSide = leftArmLength > rightArmLength ? '왼쪽' : '오른쪽';
+          results.posture.issues.push(`${longerSide} 팔이 반대쪽보다 ${diffPercentage}% 더 깁니다`);
+          results.posture.improvements.push(`어깨와 팔의 정렬을 확인하세요`);
+          results.posture.solutions.push({
+            title: "팔 길이 불균형 교정",
+            description: `${longerSide} 팔이 더 길게 보이는 것은 어깨나 허리가 틀어져있을 수 있습니다`,
+            exercises: ["어깨 교정 운동", "허리 스트레칭", "자세 교정"]
+          });
         }
       }
 
@@ -493,16 +557,90 @@ const PoseAnalysisComponent = () => {
       setAnalysisResults(results);
     } catch (error) {
       console.error('자세 분석 중 오류 발생:', error);
-      toast.error('자세 분석에 실패했습니다');
+      toast.error('자세 분석에 실패했습니다. 다시 시도해주세요.');
     } finally {
       setIsLoading(false);
       setIsAnalyzing(false);
     }
   };
 
+  // 자세 정렬 분석 함수
+  const analyzePoseAlignment = (keypoints: any[]) => {
+    // 어깨 키포인트
+    const leftShoulder = keypoints.find(kp => kp.name === 'left_shoulder');
+    const rightShoulder = keypoints.find(kp => kp.name === 'right_shoulder');
+    
+    // 엉덩이 키포인트
+    const leftHip = keypoints.find(kp => kp.name === 'left_hip');
+    const rightHip = keypoints.find(kp => kp.name === 'right_hip');
+    
+    // 무릎 키포인트
+    const leftKnee = keypoints.find(kp => kp.name === 'left_knee');
+    const rightKnee = keypoints.find(kp => kp.name === 'right_knee');
+
+    let issues = [];
+    let score = 100;
+
+    // 어깨 기울기 체크
+    if (leftShoulder && rightShoulder && 
+        leftShoulder.score > 0.3 && rightShoulder.score > 0.3) {
+      const shoulderDiff = Math.abs(leftShoulder.y - rightShoulder.y);
+      if (shoulderDiff > 20) {
+        issues.push('어깨가 기울어져 있습니다.');
+        score -= 20;
+      }
+    }
+
+    // 엉덩이 기울기 체크
+    if (leftHip && rightHip && 
+        leftHip.score > 0.3 && rightHip.score > 0.3) {
+      const hipDiff = Math.abs(leftHip.y - rightHip.y);
+      if (hipDiff > 15) {
+        issues.push('골반이 기울어져 있습니다.');
+        score -= 20;
+      }
+    }
+
+    // 무릎 정렬 체크
+    if (leftKnee && rightKnee && 
+        leftKnee.score > 0.3 && rightKnee.score > 0.3) {
+      const kneeDiff = Math.abs(leftKnee.y - rightKnee.y);
+      if (kneeDiff > 15) {
+        issues.push('무릎 높이가 불균형합니다.');
+        score -= 20;
+      }
+    }
+
+    return {
+      score: Math.max(score, 0),
+      issues,
+      needsCorrection: score < 80
+    };
+  };
+
   const shareResults = () => {
     // In a real app, this would generate a shareable link or allow social sharing
     toast.success("Share link copied to clipboard!");
+  };
+
+  const takePhoto = async () => {
+    setShowCamera(true);
+  };
+
+  const capturePhoto = async () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setPreviewUrl(imageSrc);
+      
+      // Convert base64 to file
+      const res = await fetch(imageSrc);
+      const blob = await res.blob();
+      const file = new File([blob], "webcam-photo.jpg", { type: "image/jpeg" });
+      
+      setSelectedFile(file);
+      setShowCamera(false);
+      setAnalysisResults(null);
+    }
   };
 
   // Clean up URLs when component unmounts
@@ -617,6 +755,31 @@ const PoseAnalysisComponent = () => {
                   <X size={18} className="text-gray-dark" />
                 </button>
               </div>
+              
+              {/* 분석 모드 선택 버튼 추가 */}
+              <div className="mt-4 flex justify-center space-x-4">
+                <button
+                  onClick={() => setAnalysisMode('upper')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    analysisMode === 'upper'
+                      ? 'bg-lime-bright text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  상체 분석
+                </button>
+                <button
+                  onClick={() => setAnalysisMode('full')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    analysisMode === 'full'
+                      ? 'bg-lime-bright text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  전신 분석
+                </button>
+              </div>
+              
               <div className="mt-4 flex justify-center">
                 <button
                   onClick={analyzePose}
@@ -631,7 +794,7 @@ const PoseAnalysisComponent = () => {
                   ) : (
                     <>
                       <Camera className="w-5 h-5 mr-2" />
-                      Analyze Pose
+                      {analysisMode === 'upper' ? '상체 분석하기' : '전신 분석하기'}
                     </>
                   )}
                 </button>
@@ -645,7 +808,10 @@ const PoseAnalysisComponent = () => {
               <ChevronDown size={16} className="text-gray-medium" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <button className="w-full py-2 flex items-center justify-center border border-gray-lighter rounded-md text-sm text-gray-dark hover:bg-lime-pale">
+              <button 
+                onClick={takePhoto}
+                className="w-full py-2 flex items-center justify-center border border-gray-lighter rounded-md text-sm text-gray-dark hover:bg-lime-pale"
+              >
                 <Camera className="w-4 h-4 mr-2" />
                 Take Photo
               </button>
@@ -658,143 +824,50 @@ const PoseAnalysisComponent = () => {
         </div>
 
         <div className="bg-white rounded-xl shadow-md p-6 order-1 lg:order-2">
-          <h2 className="text-xl font-semibold text-gray-dark mb-4">Analysis Results</h2>
+          <h2 className="text-xl font-semibold text-gray-dark mb-4">분석 결과</h2>
 
           {!analysisResults ? (
             <div className="flex flex-col items-center justify-center h-64 text-gray-medium space-y-3">
               <div className="bg-lime-pale rounded-full p-5">
                 <Camera className="h-10 w-10 text-lime-bright" />
               </div>
-              <p>Upload an image and click "Analyze Pose" to see results</p>
+              <p>이미지를 업로드하고 "자세 분석" 버튼을 클릭하세요</p>
             </div>
           ) : (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <h3 className="font-medium text-gray-dark">Overall Score</h3>
-                <div className="flex items-center">
-                  <div className="w-12 h-12 rounded-full bg-lime-bright flex items-center justify-center text-gray-dark font-semibold">
-                    {analysisResults.posture.score}
-                  </div>
+                <h3 className="font-medium text-gray-dark">전체 점수</h3>
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-lg font-semibold ${
+                  analysisResults.posture.score >= 80 ? 'bg-lime-bright' : 'bg-red-100 text-red-500'
+                }`}>
+                  {analysisResults.posture.score}
                 </div>
               </div>
 
-              <div>
-                <h3 className="font-medium text-gray-dark mb-2">Posture Analysis</h3>
-                <div className="bg-lime-pale bg-opacity-40 p-4 rounded-md">
-                  <p className="text-gray-dark mb-2">
-                    <span className="font-medium">Issues Detected:</span>
-                  </p>
-                  <ul className="list-disc ml-5 text-sm text-gray-medium space-y-1">
-                    {analysisResults.posture.issues.map((issue: string, i: number) => (
-                      <li key={i}>{issue}</li>
+              {analysisResults.posture.issues.length > 0 && (
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-red-700 mb-2">발견된 문제점</h4>
+                  <ul className="list-disc list-inside text-red-600 space-y-1">
+                    {analysisResults.posture.issues.map((issue: string, index: number) => (
+                      <li key={index}>{issue}</li>
                     ))}
                   </ul>
+                </div>
+              )}
 
-                  <p className="text-gray-dark mt-4 mb-2">
-                    <span className="font-medium">Suggested Improvements:</span>
+              {analysisResults.posture.needsCorrection && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => setShowExpertModal(true)}
+                    className="w-full py-3 bg-lime-bright hover:bg-lime-bright/90 text-white rounded-lg font-medium transition-colors"
+                  >
+                    전문가와 상담하기
+                  </button>
+                  <p className="text-sm text-gray-medium mt-2 text-center">
+                    자세 교정을 위해 전문가의 도움을 받아보세요
                   </p>
-                  <ul className="list-disc ml-5 text-sm text-gray-medium space-y-1">
-                    {analysisResults.posture.improvements.map((improvement: string, i: number) => (
-                      <li key={i}>{improvement}</li>
-                    ))}
-                  </ul>
-
-                  <div className="mt-6">
-                    <h4 className="font-medium text-gray-dark mb-3">해결 방법:</h4>
-                    <div className="space-y-4">
-                      {analysisResults.posture.solutions.map((solution: any, i: number) => (
-                        <div key={i} className="bg-white p-3 rounded-md border border-gray-lighter">
-                          <h5 className="font-medium text-gray-dark mb-2">{solution.title}</h5>
-                          <p className="text-sm text-gray-medium mb-2">{solution.description}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {solution.exercises.map((exercise: string, j: number) => (
-                              <span key={j} className="text-xs bg-lime-pale px-2 py-1 rounded-full text-gray-dark">
-                                {exercise}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
-              </div>
-
-              <div>
-                <h3 className="font-medium text-gray-dark mb-2">자세 각도 분석</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-lime-pale p-4 rounded-md">
-                    <h4 className="font-medium text-gray-dark mb-2">어깨</h4>
-                    <p className="text-sm text-gray-medium">
-                      {analysisResults.posture.angles.shoulders}도 기울어짐
-                    </p>
-                  </div>
-                  <div className="bg-lime-pale p-4 rounded-md">
-                    <h4 className="font-medium text-gray-dark mb-2">골반</h4>
-                    <p className="text-sm text-gray-medium">
-                      {analysisResults.posture.angles.hips}도 기울어짐
-                    </p>
-                  </div>
-                  <div className="bg-lime-pale p-4 rounded-md">
-                    <h4 className="font-medium text-gray-dark mb-2">목</h4>
-                    <p className="text-sm text-gray-medium">
-                      {analysisResults.posture.angles.neck}도 기울어짐
-                    </p>
-                  </div>
-                  <div className="bg-lime-pale p-4 rounded-md">
-                    <h4 className="font-medium text-gray-dark mb-2">등</h4>
-                    <p className="text-sm text-gray-medium">
-                      {analysisResults.posture.angles.back}도 기울어짐
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-medium text-gray-dark mb-2">Alignment</h3>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <p className="text-sm text-gray-medium mb-3">
-                    {analysisResults.alignment.details}
-                  </p>
-                  <div className="mt-3">
-                    <h4 className="font-medium text-gray-dark mb-2">자세 교정 팁:</h4>
-                    <ul className="list-disc ml-5 text-sm text-gray-medium space-y-1">
-                      {analysisResults.alignment.tips.map((tip: string, i: number) => (
-                        <li key={i}>{tip}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-medium text-gray-dark mb-2">3D 자세 분석</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-medium mb-2">기본 3D 시각화</h4>
-                    <Pose3DViewer keypoints={analysisResults.keypoints} width={width} height={height} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-medium mb-2">HMR 3D 메시 분석</h4>
-                    <HMRPoseEstimator imageUrl={previewUrl || undefined} width={width} height={height} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-2">
-                <button
-                  onClick={shareResults}
-                  className="text-sm flex items-center text-lime-bright hover:underline"
-                >
-                  <Share2 className="w-4 h-4 mr-1" /> Share Results
-                </button>
-                <Link
-                  href="/dashboard"
-                  className="text-sm text-gray-medium hover:text-lime-bright"
-                >
-                  Save to Dashboard
-                </Link>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -833,6 +906,98 @@ const PoseAnalysisComponent = () => {
         </div>
       </div>
       <canvas ref={canvasRef} className="hidden" />
+
+      {showCamera ? (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-dark">Take Photo</h3>
+              <button
+                onClick={() => setShowCamera(false)}
+                className="text-gray-medium hover:text-gray-dark"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden mb-4">
+              <Webcam
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                className="w-full h-full object-contain"
+                mirrored={true}
+                videoConstraints={{
+                  width: 1280,
+                  height: 720,
+                  facingMode: "user"
+                }}
+              />
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={capturePhoto}
+                className="primary-button"
+              >
+                <Camera className="w-5 h-5 mr-2" />
+                Capture Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 전문가 상담 모달 */}
+      {showExpertModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-gray-dark">전문가 상담 신청</h3>
+              <button
+                onClick={() => setShowExpertModal(false)}
+                className="text-gray-medium hover:text-gray-dark"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-lime-pale p-4 rounded-lg">
+                <h4 className="font-medium text-gray-dark mb-2">전문가 상담 안내</h4>
+                <ul className="text-sm text-gray-600 space-y-2">
+                  <li>• 1:1 맞춤 자세 교정 프로그램</li>
+                  <li>• 전문 물리치료사의 정밀 분석</li>
+                  <li>• 온라인/오프라인 상담 선택 가능</li>
+                  <li>• 개인별 맞춤 운동 처방</li>
+                </ul>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    window.open('https://calendly.com/your-expert', '_blank');
+                    setShowExpertModal(false);
+                  }}
+                  className="py-3 bg-lime-bright hover:bg-lime-bright/90 text-white rounded-lg font-medium transition-colors"
+                >
+                  온라인 상담 예약
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.href = 'tel:+82-1234-5678';
+                    setShowExpertModal(false);
+                  }}
+                  className="py-3 border border-lime-bright text-lime-bright hover:bg-lime-pale rounded-lg font-medium transition-colors"
+                >
+                  전화 상담
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-medium text-center">
+                * 상담 예약 시 분석된 자세 데이터가 전문가와 공유됩니다
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

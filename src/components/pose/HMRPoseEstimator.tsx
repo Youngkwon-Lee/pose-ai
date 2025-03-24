@@ -18,7 +18,7 @@ interface Keypoint3D {
   name?: string;
 }
 
-export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }: HMRPoseEstimatorProps) {
+export default function HMRPoseEstimator({ imageUrl, width = 300, height = 300 }: HMRPoseEstimatorProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,24 +33,15 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
   useEffect(() => {
     const initDetector = async () => {
       try {
-        const model = poseDetection.SupportedModels.MediaPipePose;
+        await tf.ready();
+        const model = poseDetection.SupportedModels.BlazePose;
         const detectorConfig = {
           runtime: 'tfjs',
-          modelType: 'full',
-          solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose',
           enableSmoothing: true,
-          minDetectionConfidence: 0.1,
-          minTrackingConfidence: 0.1,
-          minPoseScore: 0.1,
-          maxPoses: 1,
-          refineLandmarks: true,
-          smoothLandmarks: true,
+          modelType: 'full'
         };
         
-        const detector = await poseDetection.createDetector(
-          model,
-          detectorConfig
-        );
+        const detector = await poseDetection.createDetector(model, detectorConfig);
         detectorRef.current = detector;
       } catch (error) {
         console.error('Pose detector 초기화 실패:', error);
@@ -68,17 +59,19 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
     // Scene 설정
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0xf0f0f0);
+    scene.background = new THREE.Color(0xf5f5f5);
 
     // Camera 설정
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
     cameraRef.current = camera;
-    camera.position.set(0, 0, 5);
+    camera.position.set(0, 1.5, 3);
+    camera.lookAt(0, 1, 0);
 
     // Renderer 설정
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     rendererRef.current = renderer;
     renderer.setSize(width, height);
+    renderer.setPixelRatio(window.devicePixelRatio);
     containerRef.current.appendChild(renderer.domElement);
 
     // Controls 설정
@@ -86,14 +79,20 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
     controlsRef.current = controls;
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.minDistance = 2;
+    controls.maxDistance = 10;
 
     // 조명 설정
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    directionalLight.position.set(0, 1, 1);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(0, 10, 10);
     scene.add(directionalLight);
+
+    // 바닥 그리드 추가
+    const gridHelper = new THREE.GridHelper(4, 10, 0xcccccc, 0xcccccc);
+    scene.add(gridHelper);
 
     // 메시 그룹 생성
     const mesh = new THREE.Group();
@@ -129,8 +128,9 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
         // 이미지 로드
         const img = new Image();
         img.src = imageUrl;
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
           img.onload = resolve;
+          img.onerror = reject;
         });
 
         // 이미지 전처리
@@ -138,13 +138,15 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('Canvas context를 생성할 수 없습니다.');
 
-        // 이미지 크기 조정
-        canvas.width = 640;
-        canvas.height = 480;
+        canvas.width = width;
+        canvas.height = height;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         // 자세 추정
-        const poses = await detectorRef.current.estimatePoses(canvas);
+        const poses = await detectorRef.current.estimatePoses(canvas, {
+          flipHorizontal: false
+        });
+
         if (poses.length === 0) {
           throw new Error('자세를 감지할 수 없습니다.');
         }
@@ -154,16 +156,8 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
           throw new Error('3D 키포인트를 추정할 수 없습니다.');
         }
 
-        // Keypoint3D 배열로 변환
-        const keypoints3D: Keypoint3D[] = pose.keypoints3D.map(kp => ({
-          x: kp.x,
-          y: kp.y,
-          z: kp.z || 0,
-          score: kp.score,
-          name: kp.name
-        }));
-
-        updateMesh(keypoints3D);
+        // 3D 메시 업데이트
+        updateMesh(pose.keypoints3D);
 
       } catch (error) {
         console.error('이미지 분석 실패:', error);
@@ -174,68 +168,81 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
     };
 
     analyzeImage();
-  }, [imageUrl]);
+  }, [imageUrl, width, height]);
 
   // 3D 메시 업데이트
   const updateMesh = (keypoints3D: Keypoint3D[]) => {
     if (!meshRef.current) return;
 
     // 기존 메시 제거
-    meshRef.current.clear();
+    while (meshRef.current.children.length) {
+      const object = meshRef.current.children[0];
+      meshRef.current.remove(object);
+    }
 
-    // 새로운 메시 생성
-    const geometry = new THREE.BufferGeometry();
-    const vertices = new Float32Array(keypoints3D.length * 3);
-    const indices: number[] = [];
-
-    // 키포인트를 vertices로 변환
-    keypoints3D.forEach((keypoint, i) => {
-      vertices[i * 3] = keypoint.x;
-      vertices[i * 3 + 1] = keypoint.y;
-      vertices[i * 3 + 2] = keypoint.z;
+    // 키포인트 그리기
+    keypoints3D.forEach((keypoint) => {
+      if (keypoint.score && keypoint.score > 0.3) {
+        const geometry = new THREE.SphereGeometry(0.03, 16, 16);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+        const sphere = new THREE.Mesh(geometry, material);
+        
+        // 좌표계 변환 및 스케일 조정
+        sphere.position.set(
+          keypoint.x,
+          -keypoint.y,
+          -keypoint.z
+        );
+        
+        meshRef.current?.add(sphere);
+      }
     });
 
-    // 연결된 키포인트를 indices로 변환
+    // 연결선 그리기
     const connections = [
-      // 몸통
       [11, 12], // 어깨
+      [12, 14], // 오른쪽 어깨-팔꿈치
+      [14, 16], // 오른쪽 팔꿈치-손목
+      [11, 13], // 왼쪽 어깨-팔꿈치
+      [13, 15], // 왼쪽 팔꿈치-손목
       [12, 24], // 오른쪽 어깨-엉덩이
-      [24, 23], // 엉덩이
-      [23, 11], // 왼쪽 어깨-엉덩이
-
-      // 왼쪽 팔
-      [11, 13], // 어깨-팔꿈치
-      [13, 15], // 팔꿈치-손목
-
-      // 오른쪽 팔
-      [12, 14], // 어깨-팔꿈치
-      [14, 16], // 팔꿈치-손목
-
-      // 왼쪽 다리
-      [23, 25], // 엉덩이-무릎
-      [25, 27], // 무릎-발목
-
-      // 오른쪽 다리
-      [24, 26], // 엉덩이-무릎
-      [26, 28], // 무릎-발목
+      [11, 23], // 왼쪽 어깨-엉덩이
+      [23, 24], // 엉덩이
+      [23, 25], // 왼쪽 엉덩이-무릎
+      [25, 27], // 왼쪽 무릎-발목
+      [24, 26], // 오른쪽 엉덩이-무릎
+      [26, 28]  // 오른쪽 무릎-발목
     ];
 
-    connections.forEach(([start, end]) => {
-      indices.push(start, end);
+    connections.forEach(([startIdx, endIdx]) => {
+      const startPoint = keypoints3D[startIdx];
+      const endPoint = keypoints3D[endIdx];
+      
+      if (startPoint && endPoint && startPoint.score && endPoint.score && 
+          startPoint.score > 0.3 && endPoint.score > 0.3) {
+        const points = [
+          new THREE.Vector3(startPoint.x, -startPoint.y, -startPoint.z),
+          new THREE.Vector3(endPoint.x, -endPoint.y, -endPoint.z)
+        ];
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+        const line = new THREE.Line(geometry, material);
+        meshRef.current?.add(line);
+      }
     });
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
-
-    const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
-    const mesh = new THREE.LineSegments(geometry, material);
-    meshRef.current.add(mesh);
   };
 
   return (
     <div className="relative">
+      <div 
+        ref={containerRef} 
+        className="rounded-lg overflow-hidden bg-gray-50"
+        style={{ width, height }}
+      />
+      
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
           <div className="text-white text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
             <p className="mt-2">3D 자세 분석 중...</p>
@@ -244,14 +251,12 @@ export default function HMRPoseEstimator({ imageUrl, width = 640, height = 480 }
       )}
       
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="text-white text-center">
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+          <div className="text-white text-center p-4">
             <p className="text-red-500">{error}</p>
           </div>
         </div>
       )}
-
-      <div ref={containerRef} className="rounded-lg overflow-hidden" />
     </div>
   );
 } 
