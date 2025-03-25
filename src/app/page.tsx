@@ -12,21 +12,19 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-16">
             <div className="flex-1 text-center lg:text-left">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter mb-6">
-                <span className="gradient-text">AI-Powered</span> <br />
-                <span className="text-gray-dark">Pose Estimation Analysis</span>
+              <h1 className="text-4xl font-bold text-gray-dark mb-4">
+                <span className="text-lime-bright">AI 기반</span> 자세 추정 분석
               </h1>
-              <p className="text-lg md:text-xl text-gray-medium max-w-xl mx-auto lg:mx-0 mb-8">
-                Upload images and get instant AI analysis of your posture or movement.
-                Perfect for dancers, fitness instructors, and health professionals.
+              <p className="text-gray-medium max-w-2xl mx-auto mb-8">
+                이미지를 업로드하고 AI를 통해 자세나 움직임을 즉시 분석하세요. 댄서, 피트니스 강사, 건강 전문가에게 적합합니다.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center lg:justify-start">
-                <Link href="/upload" className="primary-button py-3 px-8 font-semibold text-lg">
-                  Start Analyzing
-                </Link>
-                <Link href="/examples" className="outline-button py-3 px-8 font-semibold text-lg">
-                  View Examples
-                </Link>
+                <button className="bg-lime-bright text-gray-dark px-6 py-3 rounded-lg font-medium hover:bg-opacity-90 transition">
+                  분석 시작하기
+                </button>
+                <button className="bg-white border-2 border-lime-bright text-gray-dark px-6 py-3 rounded-lg font-medium hover:bg-lime-pale transition">
+                  예시 보기
+                </button>
               </div>
             </div>
             <div className="flex-1 w-full max-w-xl mx-auto lg:mx-0">
@@ -44,16 +42,16 @@ export default function Home() {
           <div className="mt-16 lg:mt-24 mx-auto max-w-4xl">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
               {[
-                { label: "Users", value: "40,000+" },
-                { label: "Images Analyzed", value: "2M+" },
-                { label: "Accuracy", value: "97%" },
-                { label: "Use Cases", value: "20+" },
+                { label: "사용자", value: "40,000+" },
+                { label: "분석된 이미지", value: "2M+" },
+                { label: "정확도", value: "97%" },
+                { label: "사용 사례", value: "20+" },
               ].map((stat, index) => (
                 <div key={index} className="flex flex-col items-center">
-                  <div className="text-3xl md:text-4xl font-semibold text-lime-bright mb-2">
+                  <div className="text-lime-bright text-3xl font-bold mb-2">
                     {stat.value}
                   </div>
-                  <div className="text-sm text-gray-medium">{stat.label}</div>
+                  <div className="text-gray-medium">{stat.label}</div>
                 </div>
               ))}
             </div>
@@ -66,28 +64,28 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-semibold mb-4 text-gray-dark">
-              How It <span className="text-lime-bright">Works</span>
+              어떻게 <span className="text-lime-bright">작동하나요</span>
             </h2>
             <p className="text-gray-medium text-lg max-w-3xl mx-auto">
-              Our AI-powered pose estimation technology makes it simple to analyze and improve any posture or movement.
+              AI 기반 자세 추정 기술로 어떤 자세나 움직임도 쉽게 분석하고 개선할 수 있습니다.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               {
                 icon: <Upload className="h-10 w-10 text-lime-bright" />,
-                title: "Upload Image",
-                description: "Upload an image or take a photo directly through our platform.",
+                title: "이미지 업로드",
+                description: "이미지를 업로드하거나 플랫폼을 통해 직접 사진을 찍으세요.",
               },
               {
                 icon: <Aperture className="h-10 w-10 text-lime-bright" />,
-                title: "AI Analysis",
-                description: "Our advanced AI analyzes body posture, angles, and alignment.",
+                title: "AI 분석",
+                description: "고급 AI가 신체 자세, 각도 및 정렬을 분석합니다.",
               },
               {
                 icon: <BarChart className="h-10 w-10 text-lime-bright" />,
-                title: "Get Results",
-                description: "Receive detailed analysis and suggestions for improvement.",
+                title: "결과 받기",
+                description: "상세한 분석과 개선을 위한 제안을 받으세요.",
               },
             ].map((step, index) => (
               <div key={index} className="bg-white rounded-2xl p-8 shadow hover:shadow-lg transition-all text-center">
@@ -111,33 +109,33 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-semibold mb-4 text-gray-dark">
-              Powerful <span className="text-lime-bright">Features</span>
+              강력한 <span className="text-lime-bright">기능</span>
             </h2>
             <p className="text-gray-medium text-lg max-w-3xl mx-auto">
-              PoseAI delivers comprehensive tools for all your pose analysis needs.
+              PoseAI는 모든 자세 분석 요구에 대한 포괄적인 도구를 제공합니다.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
               {
                 icon: <Camera className="h-8 w-8 text-lime-bright" />,
-                title: "Multi-angle Analysis",
-                description: "Analyze posture from different angles for comprehensive insights.",
+                title: "다각도 분석",
+                description: "다양한 각도에서 자세를 분석하여 포괄적인 통찰을 제공합니다.",
               },
               {
                 icon: <Share2 className="h-8 w-8 text-lime-bright" />,
-                title: "Easy Sharing",
-                description: "Share results with trainers, instructors, or healthcare providers.",
+                title: "쉬운 공유",
+                description: "결과를 트레이너, 강사 또는 의료 제공자와 공유하세요.",
               },
               {
                 icon: <Layers className="h-8 w-8 text-lime-bright" />,
-                title: "Progress Tracking",
-                description: "Track posture improvements over time with historical data.",
+                title: "진행 추적",
+                description: "시간 경과에 따른 자세 개선을 역사적 데이터로 추적하세요.",
               },
               {
                 icon: <Users className="h-8 w-8 text-lime-bright" />,
-                title: "Team Collaboration",
-                description: "Collaborate with teammates or clients on posture improvements.",
+                title: "팀 협업",
+                description: "팀원이나 고객과 자세 개선에 대해 협업하세요.",
               },
             ].map((feature, index) => (
               <div key={index} className="bg-white rounded-lg p-6 shadow hover:shadow-md transition-all">
@@ -161,30 +159,30 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-semibold mb-4 text-gray-dark">
-              Who Can <span className="text-lime-bright">Benefit</span>
+              누가 <span className="text-lime-bright">혜택을 받을 수 있나요</span>
             </h2>
             <p className="text-gray-medium text-lg max-w-3xl mx-auto">
-              Our technology serves a wide range of professionals and enthusiasts.
+              우리의 기술은 다양한 전문가와 애호가에게 서비스를 제공합니다.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               {
-                title: "Dance Instructors",
-                description: "Analyze dance poses and movements to provide precise feedback and corrections.",
-                cta: "Learn more",
+                title: "댄스 강사",
+                description: "댄스 포즈와 움직임을 분석하여 정확한 피드백과 교정을 제공합니다.",
+                cta: "자세히 알아보기",
                 href: "/use-cases/dance",
               },
               {
-                title: "Fitness Trainers",
-                description: "Ensure clients maintain proper form during exercises to prevent injuries.",
-                cta: "Learn more",
+                title: "피트니스 트레이너",
+                description: "운동 중 올바른 자세를 유지하여 부상을 방지합니다.",
+                cta: "자세히 알아보기",
                 href: "/use-cases/fitness",
               },
               {
-                title: "Physical Therapists",
-                description: "Track patient progress and ensure exercises are performed correctly.",
-                cta: "Learn more",
+                title: "물리 치료사",
+                description: "환자의 진행 상황을 추적하고 운동이 올바르게 수행되도록 합니다.",
+                cta: "자세히 알아보기",
                 href: "/use-cases/therapy",
               },
             ].map((useCase, index) => (
@@ -213,23 +211,23 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-semibold mb-6 text-gray-dark">
-              Ready to analyze your movement?
+              움직임을 분석할 준비가 되셨나요?
             </h2>
             <p className="text-gray-dark text-lg mb-8 max-w-2xl mx-auto">
-              Join thousands of professionals using PoseAI to improve technique, prevent injuries, and enhance performance.
+              PoseAI를 사용하여 기술을 향상하고 부상을 예방하며 성능을 향상시키는 수천 명의 전문가에 합류하세요.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/signup"
                 className="bg-gray-dark text-white hover:bg-opacity-90 py-3 px-8 rounded-md font-semibold transition-all"
               >
-                Get Started Free
+                무료로 시작하기
               </Link>
               <Link
                 href="/contact"
                 className="bg-white text-gray-dark hover:bg-opacity-90 py-3 px-8 rounded-md font-semibold transition-all"
               >
-                Contact Sales
+                영업 문의
               </Link>
             </div>
           </div>

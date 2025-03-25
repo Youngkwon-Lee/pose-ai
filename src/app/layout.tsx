@@ -7,7 +7,7 @@ import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 
 export const metadata: Metadata = {
-  title: "PoseAI - Advanced Pose Estimation Platform",
+  title: "AI 기반 자세 추정 분석",
   description: "Upload images and analyze posture with AI technology. Perfect for dance, fitness, and posture analysis.",
   icons: {
     icon: "/favicon.ico",
