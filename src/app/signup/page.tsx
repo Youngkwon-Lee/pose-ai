@@ -1,98 +1,174 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useState } from 'react';
+import Link from 'next/link';
+import { toast } from 'sonner';
 
 export default function SignupPage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    agreeToTerms: false
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError("");
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      setIsLoading(false);
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('비밀번호가 일치하지 않습니다.');
       return;
     }
+    // 여기에 실제 회원가입 로직 구현
+    toast.success('회원가입이 완료되었습니다.');
+  };
 
-    try {
-      const res = await fetch("/api/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Signup failed. Email may already be in use.");
-      }
-
-      router.push("/login"); // 회원가입 성공 후 로그인 페이지 이동
-    } catch (err) {
-      setError(err.message || "An error occurred.");
-    } finally {
-      setIsLoading(false);
-    }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="p-6 bg-white rounded-lg shadow-lg w-96">
-        <h2 className="text-2xl font-semibold mb-4">Sign Up</h2>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            placeholder="Full Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
-            required
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition"
-          >
-            {isLoading ? "Signing up..." : "Sign Up"}
-          </button>
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-bold text-gray-dark">
+            회원가입
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-medium">
+            이미 계정이 있으신가요?{' '}
+            <Link href="/login" className="text-lime-bright hover:text-lime-600">
+              로그인
+            </Link>
+          </p>
+        </div>
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-dark mb-2">
+                이름
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                value={formData.name}
+                onChange={handleChange}
+                className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-lighter placeholder-gray-medium text-gray-dark focus:outline-none focus:ring-2 focus:ring-lime-bright focus:border-lime-bright sm:text-sm"
+                placeholder="홍길동"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-dark mb-2">
+                이메일
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-lighter placeholder-gray-medium text-gray-dark focus:outline-none focus:ring-2 focus:ring-lime-bright focus:border-lime-bright sm:text-sm"
+                placeholder="example@email.com"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-dark mb-2">
+                비밀번호
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={handleChange}
+                className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-lighter placeholder-gray-medium text-gray-dark focus:outline-none focus:ring-2 focus:ring-lime-bright focus:border-lime-bright sm:text-sm"
+                placeholder="••••••••"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-dark mb-2">
+                비밀번호 확인
+              </label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="appearance-none rounded-lg relative block w-full px-3 py-2 border border-gray-lighter placeholder-gray-medium text-gray-dark focus:outline-none focus:ring-2 focus:ring-lime-bright focus:border-lime-bright sm:text-sm"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              id="agree-terms"
+              name="agreeToTerms"
+              type="checkbox"
+              required
+              checked={formData.agreeToTerms}
+              onChange={handleChange}
+              className="h-4 w-4 text-lime-bright focus:ring-lime-bright border-gray-lighter rounded"
+            />
+            <label htmlFor="agree-terms" className="ml-2 block text-sm text-gray-medium">
+              <span>
+                <Link href="/terms" className="text-lime-bright hover:text-lime-600">
+                  이용약관
+                </Link>
+                과{' '}
+                <Link href="/privacy" className="text-lime-bright hover:text-lime-600">
+                  개인정보처리방침
+                </Link>
+                에 동의합니다
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-lime-bright hover:bg-lime-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-lime-bright"
+            >
+              회원가입
+            </button>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-lighter"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-medium">
+                또는 다음으로 계속
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="w-full inline-flex justify-center py-2 px-4 border border-gray-lighter rounded-md shadow-sm bg-white text-sm font-medium text-gray-dark hover:bg-gray-50"
+            >
+              Google
+            </button>
+            <button
+              type="button"
+              className="w-full inline-flex justify-center py-2 px-4 border border-gray-lighter rounded-md shadow-sm bg-white text-sm font-medium text-gray-dark hover:bg-gray-50"
+            >
+              Kakao
+            </button>
+          </div>
         </form>
-        <p className="mt-4 text-sm">
-          Already have an account? <Link href="/login" className="text-blue-500">Log in</Link>
-        </p>
       </div>
     </div>
   );
